@@ -1,0 +1,442 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Serverless Task Management API - Complete Infrastructure'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: serverless-task-api
+    Description: Project name for resource naming
+  
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - prod
+    Description: Environment name
+
+Resources:
+  # DynamoDB Table for Tasks
+  TasksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${ProjectName}-tasks-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: taskId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: taskId
+          KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+  
+  # S3 Bucket for File Attachments
+  AttachmentsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-attachments-${AWS::AccountId}-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldAttachments
+            Status: Enabled
+            ExpirationInDays: 90
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - '*'
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+            AllowedHeaders:
+              - '*'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+  
+  # IAM Role for Task Lambda Function
+  TaskLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-task-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                Resource: !GetAtt TasksTable.Arn
+  
+  # IAM Role for Attachment Lambda Function
+  AttachmentLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-attachment-lambda-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                Resource: !Sub '${AttachmentsBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !GetAtt AttachmentsBucket.Arn
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt TasksTable.Arn
+  
+  # Task Management Lambda Function
+  TaskLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-task-handler-${Environment}'
+      Runtime: python3.11
+      Handler: task_handler.lambda_handler
+      Role: !GetAtt TaskLambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          # Placeholder - will be updated during deployment
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Placeholder'}
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref TasksTable
+          S3_BUCKET: !Ref AttachmentsBucket
+      Timeout: 30
+      MemorySize: 256
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+  
+  # Attachment Lambda Function
+  AttachmentLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-attachment-handler-${Environment}'
+      Runtime: python3.11
+      Handler: attachment_handler.lambda_handler
+      Role: !GetAtt AttachmentLambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          # Placeholder - will be updated during deployment
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Placeholder'}
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref TasksTable
+          S3_BUCKET: !Ref AttachmentsBucket
+      Timeout: 30
+      MemorySize: 256
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+  
+  # CloudWatch Log Groups
+  TaskLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-task-handler-${Environment}'
+      RetentionInDays: 7
+  
+  AttachmentLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-attachment-handler-${Environment}'
+      RetentionInDays: 7
+  
+  # API Gateway REST API
+  TaskAPI:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub '${ProjectName}-api-${Environment}'
+      Description: Serverless Task Management API
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+  
+  # API Gateway Resources
+  TasksResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt TaskAPI.RootResourceId
+      PathPart: tasks
+      RestApiId: !Ref TaskAPI
+  
+  TaskIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref TasksResource
+      PathPart: '{taskId}'
+      RestApiId: !Ref TaskAPI
+  
+  AttachmentsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref TaskIdResource
+      PathPart: attachments
+      RestApiId: !Ref TaskAPI
+  
+  FileIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref AttachmentsResource
+      PathPart: '{fileId}'
+      RestApiId: !Ref TaskAPI
+  
+  # API Gateway Methods - Tasks
+  TasksOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref TaskAPI
+      ResourceId: !Ref TasksResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+  
+  TasksGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref TaskAPI
+      ResourceId: !Ref TasksResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TaskLambdaFunction.Arn}/invocations'
+  
+  TasksPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref TaskAPI
+      ResourceId: !Ref TasksResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TaskLambdaFunction.Arn}/invocations'
+  
+  TaskIdGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref TaskAPI
+      ResourceId: !Ref TaskIdResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TaskLambdaFunction.Arn}/invocations'
+  
+  TaskIdPutMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref TaskAPI
+      ResourceId: !Ref TaskIdResource
+      HttpMethod: PUT
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TaskLambdaFunction.Arn}/invocations'
+  
+  TaskIdDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref TaskAPI
+      ResourceId: !Ref TaskIdResource
+      HttpMethod: DELETE
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TaskLambdaFunction.Arn}/invocations'
+  
+  # API Gateway Methods - Attachments
+  AttachmentsPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref TaskAPI
+      ResourceId: !Ref AttachmentsResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AttachmentLambdaFunction.Arn}/invocations'
+  
+  AttachmentsGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref TaskAPI
+      ResourceId: !Ref AttachmentsResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AttachmentLambdaFunction.Arn}/invocations'
+  
+  FileIdDeleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref TaskAPI
+      ResourceId: !Ref FileIdResource
+      HttpMethod: DELETE
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AttachmentLambdaFunction.Arn}/invocations'
+  
+  # Lambda Permissions for API Gateway
+  TaskLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TaskLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${TaskAPI}/*/*'
+  
+  AttachmentLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AttachmentLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${TaskAPI}/*/*'
+  
+  # API Gateway Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - TasksGetMethod
+      - TasksPostMethod
+      - TaskIdGetMethod
+      - TaskIdPutMethod
+      - TaskIdDeleteMethod
+      - AttachmentsPostMethod
+      - AttachmentsGetMethod
+      - FileIdDeleteMethod
+    Properties:
+      RestApiId: !Ref TaskAPI
+      StageName: !Ref Environment
+  
+  # CloudWatch Alarms
+  TaskLambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-task-lambda-errors-${Environment}'
+      AlarmDescription: Alert when task Lambda function has errors
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref TaskLambdaFunction
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub 'https://${TaskAPI}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+    Export:
+      Name: !Sub '${ProjectName}-api-endpoint-${Environment}'
+  
+  TasksTableName:
+    Description: DynamoDB Table Name
+    Value: !Ref TasksTable
+    Export:
+      Name: !Sub '${ProjectName}-table-${Environment}'
+  
+  AttachmentsBucketName:
+    Description: S3 Bucket for Attachments
+    Value: !Ref AttachmentsBucket
+    Export:
+      Name: !Sub '${ProjectName}-bucket-${Environment}'
+  
+  TaskLambdaFunctionName:
+    Description: Task Lambda Function Name
+    Value: !Ref TaskLambdaFunction
+  
+  AttachmentLambdaFunctionName:
+    Description: Attachment Lambda Function Name
+    Value: !Ref AttachmentLambdaFunction
