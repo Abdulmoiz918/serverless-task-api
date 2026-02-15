@@ -340,7 +340,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 **Your Name**
 - LinkedIn: [Abdul Moiz](https://linkedin.com/in/abdul-moiz-69ab64240)
 - GitHub: [Abdulmoiz918](https://github.com/Abdulmoiz918)
-- Email: amoiz6208@gmail.com@example.com
+- Email: amoiz6208@gmail.com
 
 ## 🌟 Acknowledgments
 
