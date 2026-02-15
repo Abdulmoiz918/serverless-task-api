@@ -14,7 +14,14 @@ This project implements a fully serverless REST API using the following AWS serv
 - **IAM**: Fine-grained access control and security policies
 - **CloudFormation**: Infrastructure as Code for repeatable deployments
 
+
 ### Architecture Diagram
+
+![Architecture Diagram](./Architecture.png)
+![alt text](screenshots/Architecture.png)
+
+
+### Architectural workflow
 
 ```
 ┌─────────────┐
@@ -226,6 +233,31 @@ This project uses AWS Free Tier eligible services:
 - **Private S3**: All public access blocked
 - **CORS**: Configurable cross-origin resource sharing
 - **CloudWatch Logs**: Audit trail of all operations
+
+
+## 📸 Live Deployment Screenshots
+
+### Successful Deployment
+![Deployment Success](./screenshots/deployment-success.png)
+*Automated CloudFormation deployment completes in under 5 minutes*
+
+### DynamoDB Database
+![DynamoDB Table](./screenshots/dynamodb-table.png)
+*Task data stored in serverless NoSQL database with automatic scaling*
+
+### API Gateway Configuration
+![API Gateway](./screenshots/api-gateway.png)
+*RESTful API endpoints with complete CRUD operations*
+
+### Lambda Functions
+![Lambda Functions](./screenshots/lambda-functions.png)
+*Serverless compute functions handling business logic*
+
+### S3 Storage Bucket
+![S3 Bucket](./screenshots/s3-bucket.png)
+*Secure encrypted storage for file attachments*
+
+
 
 ## 📊 Monitoring
 
